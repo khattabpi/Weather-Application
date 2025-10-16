@@ -1,0 +1,47 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mysql-init-job
+spec:
+  template:
+    spec:
+      containers:
+      - name: mysql-init-container
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: root-password
+        - name: MYSQL_AUTH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: auth-password
+        - name: MYSQL_USER
+          value: "authuser"
+        - name: MYSQL_HOST
+          value: "mysql"     # اسم الـ Service (headless)
+        - name: MYSQL_PORT
+          value: "3306"
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          echo "🚀 Initializing MySQL database..."
+          # Wait until MySQL is ready
+          until mysqladmin ping -h${MYSQL_HOST} -P${MYSQL_PORT} -uroot -p${MYSQL_ROOT_PASSWORD} --silent; do
+            echo "⏳ Waiting for MySQL to be ready..."
+            sleep 5
+          done
+          echo "✅ MySQL is up! Creating database and user..."
+          mysql -h${MYSQL_HOST} -P${MYSQL_PORT} -uroot -p${MYSQL_ROOT_PASSWORD} <<EOSQL
+            CREATE DATABASE IF NOT EXISTS weatherapp;
+            CREATE USER IF NOT EXISTS '${MYSQL_USER}'@'%' IDENTIFIED BY '${MYSQL_AUTH_PASSWORD}';
+            GRANT ALL PRIVILEGES ON weatherapp.* TO '${MYSQL_USER}'@'%';
+            FLUSH PRIVILEGES;
+          EOSQL
+          echo "🎉 MySQL initialization complete."
+      restartPolicy: OnFailure
+
+
